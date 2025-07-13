@@ -1,7 +1,7 @@
-# Active Directory Account Lockout Auditing & Notification - Step-by-Step Guide
+# Active Directory Account Lockout Auditing & Notification - Full Step-by-Step Guide
 
 ## 🔧 Step 1: Enable Audit Policies on Domain Controller  
-Run the following commands on each Domain Controller to ensure proper auditing is enabled for account management and lockouts:
+Run the following commands on **each Domain Controller** to ensure proper auditing is enabled for account management and lockouts:
 
 ```powershell
 auditpol /set /category:"Account Management" /success:enable /failure:enable
@@ -29,9 +29,16 @@ Unlock-ADAccount -Identity "TestUser"
 
 ---
 
-## 🚫 Step 3: Simulate Account Lockout via LDAP Failed Binds  
-Use repeated failed LDAP authentication to trigger a lockout for the test user.
+## 🔍 Step 3: Check Lockout Status
+Verify if the user is locked out before starting the test:
+```powershell
+Search-ADAccount -LockedOut -UsersOnly | Select-Object SamAccountName, Name, Enabled
+```
 
+---
+
+## 🚫 Step 4: Simulate Account Lockout  
+### Option 1: Using LDAP Failed Binds
 ```powershell
 $Username = "TestUser"
 $Domain = "YourDomain"
@@ -48,30 +55,50 @@ for ($i = 1; $i -le 6; $i++) {
 }
 ```
 
+### Option 2: Using `net use` to Trigger Lockout via Failed SMB Authentication
+```powershell
+for ($i = 1; $i -le 5; $i++) {
+    cmd /c "net use \\your-dc\IPC$ /user:YourDomain\TestUser WrongPassword123"
+}
+```
+
 ---
 
-## 📧 Step 4: Notification Script
-After lockout, run the script to capture the latest Event ID 4740 and send an email notification.
+## 🔍 Step 5: Check for Lockout Event in Security Log
+```powershell
+Get-WinEvent -FilterHashtable @{
+    LogName = 'Security'
+    ID = 4740
+    StartTime = (Get-Date).AddHours(-2)
+} | Where-Object { $_.Message -like "*TestUser*" }
+```
 
+---
+
+## 📧 Step 6: Notification Script
+After confirming lockout, run the email notification script to capture the latest Event ID 4740 and send a detailed email.
 Update the script placeholders for:
 - SMTP Server
 - Sender Email
 - Recipient Emails
-- Your Domain and DC Hostname
+- Domain Controller Hostname
+- Domain Name
 - Test User Account
 
 ---
 
-## 🔍 Step 5: Validate Results
-- Confirm that Event ID 4740 is written to the **Security Event Log**.
+## ✅ Step 7: Validate Results
+- Confirm Event ID 4740 is written to the **Security Event Log**.
 - Confirm the email notification was received with lockout details.
+- Confirm user status shows as locked out.
+
+```powershell
+Search-ADAccount -LockedOut -UsersOnly | Select-Object SamAccountName, Name, Enabled
+```
 
 ---
 
-## ✅ Done.
-You now have auditing, lockout simulation, and email notification fully operational for AD account lockouts.
-
----
 ## 📄 Notes:
 - `auditpol` changes are temporary. For permanent policy, configure via **GPO**.
 - Always verify your policies on each DC individually.
+- These steps are for **lab / testing purposes only.**
